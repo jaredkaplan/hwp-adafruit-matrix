@@ -1,0 +1,101 @@
+<!--
+  Copyright 2011-2014 Marvell Semiconductor, Inc.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<program xmlns="http://www.kinoma.com/kpr/1">
+
+    <require id="AdafruitMatrix" path="AdafruitMatrix" />
+    
+    <!-- The main container template -->
+    <container id="MainContainer" top="0" left="0" bottom="0" right="0">
+        <skin color="white"/>
+        <label name="info" string="'Animating Colors'">
+            <style font="24px Arial" color="black"/>
+        </label>
+    </container>
+
+    <script>
+        <![CDATA[
+            // create a new BiColorMatrix instance and specify the
+            // I2C data and clock pins on the device
+            var matrix = new AdafruitMatrix.BiColorMatrix( 27, 29 );
+
+            // initialize the matrix
+            matrix.init();
+
+            // add the main container to the application
+            application.add( new MainContainer() );
+
+            // start the animation
+            application.invoke( new Message( "/animate" ) );
+        ]]>
+    </script>
+
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- Animate handler animates the color squares on the BiColorMatrix -->
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <variable id="COLORS" value="[AdafruitMatrix.COLOR_1,AdafruitMatrix.COLOR_2,AdafruitMatrix.COLOR_3]" />
+
+    <handler path="/animate">
+        <behavior>
+            <field id="cur" value="0"/>
+            <method id="onInvoke" params="handler, message">
+                <![CDATA[
+                    matrix.display.fill( COLORS[this.cur] );
+                    matrix.display.fillRect( 1, 1, 6, 6, COLORS[(this.cur + 1) % 3] );
+                    matrix.display.fillRect( 2, 2, 4, 4, COLORS[(this.cur + 2) % 3] );
+                    matrix.display.fillRect( 3, 3, 2, 2, COLORS[this.cur] );
+
+                    if( this.cur == 2 )
+                        this.cur = 0;
+                    else
+                        this.cur++;
+
+                    // update the matrix display
+                    matrix.draw();
+
+                    // invoke the wait handler
+                    handler.invoke( new Message( "/delay?duration=1000&cb=/animate" ) );
+                ]]>
+            </method>
+        </behavior>
+    </handler>
+
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- Tell the handler to wait before calling the specified handler   -->
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <handler path="/delay">
+        <behavior>
+            <method id="onInvoke" params="handler, message">
+                <![CDATA[
+                    var query = parseQuery( message.query );
+                    var duration = query.duration;
+
+                    handler.wait( duration )
+                ]]>
+            </method>
+            <method id="onComplete" params="handler, message">
+                <![CDATA[
+                    var query = parseQuery( handler.message.query );
+                    var cb = query.cb;
+
+                    handler.invoke( new Message( cb ) );
+                ]]>
+            </method>
+        </behavior>
+    </handler>
+
+</program>

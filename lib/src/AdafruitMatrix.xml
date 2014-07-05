@@ -1,0 +1,621 @@
+<!--
+  Copyright 2011-2014 Marvell Semiconductor, Inc.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<module xmlns="http://www.kinoma.com/kpr/1">
+
+    <require id="HardwarepinsModule" path="HardwarepinsModule" />
+
+    <variable id="DEFAULT_ADDR" value="0x70" />
+
+    <variable id="COLOR_1" value="0x00FF00" />
+    <variable id="COLOR_2" value="0xFF0000" />
+    <variable id="COLOR_3" value="COLOR_1 | COLOR_2" />
+
+    <variable id="ON" value="HardwarepinsModule.HIGH" />
+    <variable id="OFF" value="HardwarepinsModule.LOW" />
+
+    <!-- ++++++++++++++++++++++++++++++++++++++ -->
+    <!-- AdafruitMatrix - LED matrix base class -->
+    <!-- ++++++++++++++++++++++++++++++++++++++ -->
+
+    <private>
+        <class id="AdafruitMatrix" like="HardwarepinsModule.I2C">
+            <field id="display" />
+            <field id="offset" />
+            <field id="width" />
+            <field id="height" />
+            <constructor params="sda, scl, addr, display, width, height, config">
+                <![CDATA[
+                    HardwarepinsModule.I2C.call( this, sda, scl, addr || DEFAULT_ADDR, config );
+
+                    this.display = display || new MatrixPixelmapDisplay();
+                    this.offset = { x:0, y:0 };
+                    this.width = width || 8;
+                    this.height = height || 8;
+                ]]>
+            </constructor>
+            <method id="init" params="callback">
+                <![CDATA[
+                    this.run( "AdafruitMatrixScripts", "adafruitMatrix_bll_init", null, callback );
+                ]]>
+            </method>
+            <method id="draw" params="callback">
+                <![CDATA[
+                    this.run( "AdafruitMatrixScripts", "adafruitMatrix_bll_draw", { value:this.getData() }, callback );
+                ]]>
+            </method>
+            <method id="setDisplayOffset" params="x, y">
+                <![CDATA[
+                    this.display.assertValidCoordinates( x, y, this.width, this.height );
+
+                    this.offset = {x:x, y:y};
+                ]]>
+            </method>
+
+            <!-- utility functions -->
+            <method id="getPixelRowData">
+                <![CDATA[
+                    return this.display.getPixelRowData( this.offset.x, this.offset.y, this.width, this.height );
+                ]]>
+            </method>
+
+            <method id="getData" />
+        </class>
+    </private>
+
+    <!-- ++++++++++++++++++++++++++++++++++ -->
+    <!-- AdafruitMatrix simulator interface -->
+    <!-- ++++++++++++++++++++++++++++++++++ -->
+
+    <class id="AdafruitMatrixSimulatorInterface" like="HardwarepinsModule.SimulatorInterface">
+        <field id="simulatorId" />
+        <constructor params="simulatorId">
+            <![CDATA[
+                this.simulatorId = simulatorId;
+            ]]>
+        </constructor>
+        <method id="getSimulatorId">
+            <![CDATA[
+                return this.simulatorId;
+            ]]>
+        </method>
+        <method id="getSimulatorModule">
+            <![CDATA[
+                return mergeURI( module.uri, "AdafruitMatrixSimulator" );
+            ]]>
+        </method>
+        <method id="adafruitMatrix_bll_init" params="query, parameters, invoker">
+            <![CDATA[
+                this.sendHardwarepinsEvent( "init", query, parameters, invoker );
+            ]]>
+        </method>
+        <method id="adafruitMatrix_bll_draw" params="query, parameters, invoker">
+            <![CDATA[
+                this.sendHardwarepinsEvent( "draw", query, parameters, invoker );
+            ]]>
+        </method>
+    </class>
+
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- MonoColorMatrix - single color 8x8 Adafruit LED Backpack -->
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <variable id="ADAFRUIT_MONO_COLOR_MATRIX_SIMULATOR_ID" value="'AdafruitMonoColorMatrix'" />
+
+    <class id="MonoColorMatrix" like="AdafruitMatrix">
+        <field id="data" />
+        <constructor params="sda, scl, addr, display, config">
+            <![CDATA[
+                AdafruitMatrix.call( this, sda, scl, addr, display, 8, 8, config );
+
+                this.data = new Array( 8 );
+            ]]>
+        </constructor>
+        <method id="createHardwarepinsSimulator">
+            <![CDATA[
+                return new AdafruitMatrixSimulatorInterface( ADAFRUIT_MONO_COLOR_MATRIX_SIMULATOR_ID );
+            ]]>
+        </method>
+        <method id="getData">
+            <![CDATA[
+                var pixelRowData = this.getPixelRowData();
+
+                for( var row = 0; row < 8; row++ )
+                {
+                    var rowData = 0;
+
+                    for( var col = 0; col < 8; col++ )
+                    {
+                        var p = pixelRowData[row][col]; 
+
+                        if( p.state == ON )
+                            rowData |= 1 << ((col + 7) % 8);
+                    }
+
+                    this.data[row] = rowData;
+                }
+
+                return this.data;
+            ]]>
+        </method>
+    </class>
+
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- BiColorMatrix - bi-color 8x8 Adafruit LED Backpack -->
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <variable id="ADAFRUIT_BI_COLOR_MATRIX_SIMULATOR_ID" value="'AdafruitBiColorMatrix'" />
+
+    <class id="BiColorMatrix" like="AdafruitMatrix">
+        <field id="data" />
+        <constructor params="sda, scl, addr, display, config">
+            <![CDATA[
+                AdafruitMatrix.call( this, sda, scl, addr, display, 8, 8, config );
+
+                this.data = new Array( 8 );
+            ]]>
+        </constructor>
+        <method id="createHardwarepinsSimulator">
+            <![CDATA[
+                return new AdafruitMatrixSimulatorInterface( ADAFRUIT_BI_COLOR_MATRIX_SIMULATOR_ID );
+            ]]>
+        </method>
+        <method id="getData">
+            <![CDATA[
+                var pixelRowData = this.getPixelRowData();
+
+                for( var row = 0; row < 8; row++ )
+                {
+                    var rowData = 0;
+
+                    for( var col = 0; col < 8; col++ )
+                    {
+                        var p = pixelRowData[row][col]; 
+
+                        if( p.state == ON && p.brightness >= 128 )
+                        {
+                            if( p.color == COLOR_2 )
+                                rowData |= (1 << (col + 8));
+
+                            else if( p.color == COLOR_3 )
+                                rowData |= ((1 << (col + 8)) | (1 << col));
+
+                            else
+                                rowData |= (1 << col);
+                        }
+                    }
+
+                    this.data[row] = rowData;
+                }
+
+                return this.data;
+            ]]>
+        </method>
+    </class>
+
+    <!-- +++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- MatrixDisplay - used to render pixel data -->
+    <!-- +++++++++++++++++++++++++++++++++++++++++ -->
+
+    <private>
+        <class id="MatrixDisplay">
+            <field id="width" />
+            <field id="height" />
+            <field id="filters" />
+            <constructor params="width, height">
+                <![CDATA[
+                    this.width = width != null ? Math.max( width, 8 ) : 8;
+                    this.height = height != null ? Math.max( height, 8 ) : 8;
+
+                    this.initialize();
+                ]]>
+            </constructor>
+
+            <method id="initialize" />
+
+            <!-- pixel manipulation -->
+            <method id="createPixel" params="state, color, brightness">
+                <![CDATA[
+                    var p = new MatrixDisplayPixel( state, color, brightness );
+
+                    if( this.filters != null )
+                    {
+                        for( var j = 0; j < this.filters.length; j++ )
+                            this.filters[j].filter( p );
+                    }
+
+                    return p;
+                ]]>
+            </method>
+
+            <method id="getPixelRowData" params="x, y, width, height"/>
+            <method id="getPixel" params="x, y" />
+            <method id="setPixel" params="x, y, state, color, brightness" />
+
+            <!-- pixel selection filters -->
+            <method id="addFilter" params="filter">
+                <![CDATA[
+                    this.assertValidFilterType( filter );
+
+                    if( this.filters == null )
+                        this.filters = new Array();
+
+                    this.filters.push( filter );
+                ]]>
+            </method>
+
+            <!-- assertions -->
+            <method id="assertValidCoordinates" params="x, y, width, height">
+                <![CDATA[
+                    if( x < 0 || x > (this.width - 1) || y < 0 || y > (this.height - 1) || 
+                        (width != null && (width < 0 || (x + width) > this.width)) ||
+                        (height != null && (height < 0 || (y + height) > this.height)) )
+                            throw new Error( "Assert: coordinate is out of range!" );
+                ]]>
+            </method>
+            <method id="assertValidPixelType" params="p">
+                <![CDATA[
+                    if( (p instanceof MatrixDisplayPixel) == false )
+                        throw new Error( "Assert: not a valid pixel type!" );
+                ]]>
+            </method>
+            <method id="assertValidFilterType" params="filter">
+                <![CDATA[
+                    if( (filter instanceof MatrixPixelFilter) == false )
+                        throw new Error( "Assert: not a valid pixel filter type!" );
+                ]]>
+            </method>
+
+            <method id="applyRect" params="x, y, width, height, state, color, brightness">
+                <![CDATA[
+                    this.assertValidCoordinates( x, y, width, height );
+
+                    for( var row = y; row < (y + height); row++ )
+                    {
+                        for( var col = x; col < (x + width); col++ )
+                            this.setPixel( col, row, state, color, brightness );
+                    }
+                ]]>
+            </method>
+
+            <!-- basic pixel manipulation drawing functions -->
+            <method id="fill" params="color, brightness">
+                <![CDATA[
+                    this.applyRect( 0, 0, this.width, this.height, ON, color, brightness );
+                ]]>
+            </method>
+            <method id="fillRect" params="x, y, width, height, color, brightness">
+                <![CDATA[
+                    this.applyRect( x, y, width, height, ON, color, brightness );
+                ]]>
+            </method>
+            <method id="clear">
+                <![CDATA[
+                    this.applyRect( 0, 0, this.width, this.height, OFF );
+                ]]>
+            </method>
+            <method id="clearRect" params="x, y, width, height">
+                <![CDATA[
+                    this.applyRect( x, y, width, height, OFF );
+                ]]>
+            </method>
+        </class>
+    </private>
+
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- MatrixPixelmapDisplay - used to render bitmap with simple API -->
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <class id="MatrixPixelmapDisplay" like="MatrixDisplay">
+        <field id="data" />
+        <constructor params="width, height">
+            <![CDATA[
+                MatrixDisplay.call( this, width, height );
+            ]]>
+        </constructor>
+        <method id="initialize">
+            <![CDATA[
+                this.data = new Array();
+
+                for( var row = 0; row < this.height; row++ )
+                {
+                    var rowData = new Array();
+
+                    for( col = 0; col < this.width; col++ )
+                        rowData.push( new MatrixDisplayPixel() );
+
+                    this.data.push( rowData );
+                }
+            ]]>
+        </method>
+        <method id="getPixel" params="x, y">
+            <![CDATA[
+                this.assertValidCoordinates( x, y );
+
+                return this.data[y][x];
+            ]]>
+        </method>
+        <method id="setPixel" params="x, y, state, color, brightness">
+            <![CDATA[
+                this.assertValidCoordinates( x, y );
+
+                var adjustedState = state == null || state == ON ? ON : OFF;
+                var adjustedColor = color != null ? color : COLOR_1;
+                var adjustedBrightness = brightness != null ? Math.max( 0, Math.min( brightness, 0xFF ) ) : 0xFF
+
+                // set the pixel in the pixel data map to the specified parameters
+                this.getPixel( x, y ).set( adjustedState, adjustedColor, adjustedBrightness );
+            ]]>
+        </method>
+        <method id="getPixelRowData" params="x, y, width, height">
+            <![CDATA[
+                this.assertValidCoordinates( x, y, width, height );
+
+                if( x == 0 && y == 0 && width == this.width && height == this.height )
+                    return this.data;
+                else
+                {
+                    var mappedData = new Array( height );
+
+                    for( var row = 0; row < height; row++ )
+                        mappedData[row] = this.data[y + row].slice( x, x + width );
+
+                    return mappedData;
+                }
+            ]]>
+        </method>
+    </class>
+
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- MatrixCanvasDisplay - used to render pixel data -->
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <class id="MatrixCanvasDisplay" like="MatrixPixelmapDisplay">
+        <field id="canvas" />
+        <field id="ctx" />
+        <field id="clearColor" />
+        <field id="buffered" />
+        <field id="drawing" />
+
+        <constructor params="width, height, clearColor, buffered">
+            <![CDATA[
+                this.clearColor = clearColor != null ? clearColor : 0xFFFFFF;
+                this.buffered = buffered == true;
+                this.drawing = false;
+                this.addFilter( new BitmapThresholdPixelFilter() );
+
+                MatrixPixelmapDisplay.call( this, width, height );
+            ]]>
+        </constructor>
+        <method id="initialize">
+            <![CDATA[
+                this.canvas = new Canvas( {width:this.width, height:this.height} );
+                this.ctx = this.canvas.getContext( "2d" );
+
+                if( this.buffered )
+                    MatrixPixelmapDisplay.prototype.initialize.call( this );
+            ]]>
+        </method>
+        <method id="beginDrawing">
+            <![CDATA[
+                this.drawing = true;
+
+                return this.ctx;
+            ]]>
+        </method>
+        <method id="endDrawing">
+            <![CDATA[
+                this.drawing = false;
+
+                if( this.buffered )
+                    this.data = this.createPixelRowData( 0, 0, this.width, this.height );
+            ]]>
+        </method>
+        <method id="getPixelRowData" params="x, y, width, height">
+            <![CDATA[
+                if( this.buffered )
+                    return MatrixPixelmapDisplay.prototype.getPixelRowData.call( this, x, y, width, height );
+                else
+                    return this.createPixelRowData( x, y, width, height );
+            ]]>
+        </method>
+        <method id="createPixelRowData" params="x, y, width, height">
+            <![CDATA[
+                this.assertValidCoordinates( x, y, width, height );
+
+                var imageData = this.ctx.getImageData( x, y, width, height );
+                var pixelRowData = new Array();
+
+                for( var row = 0; row < height; row++ )
+                {
+                    var rowData = new Array();
+                    var rowIndex = row * (width * 4);
+
+                    for( col = 0; col < width; col++ )
+                    {
+                        var idx = rowIndex + (col * 4);
+
+                        var r = imageData.data[idx];
+                        var g = imageData.data[idx + 1];
+                        var b = imageData.data[idx + 2];
+                        var a = imageData.data[idx + 3];
+                        var color = r << 16 | g << 8 | b;
+
+                        rowData.push( this.createPixel( color != this.clearColor, color, a ) );
+                    }
+
+                    pixelRowData.push( rowData );
+                }
+
+                return pixelRowData; 
+            ]]>
+        </method>
+        <method id="getPixel" params="x, y">
+            <![CDATA[
+                if( this.buffered )
+                    return MatrixPixelmapDisplay.prototype.getPixel.call( this, x, y );
+                else
+                {
+                    this.assertValidCoordinates( x, y );
+
+                    var imageData = this.ctx.getImageData( x, y, 1, 1 );
+                    var r = imageData.data[0];
+                    var g = imageData.data[1];
+                    var b = imageData.data[2];
+                    var a = imageData.data[3];
+                    var color = r << 16 | g << 8 | b;
+
+                    return this.createPixel( color != 0, color, a );
+                }
+            ]]>
+        </method>
+        <method id="setPixel" params="x, y, state, color, brightness">
+            <![CDATA[
+                this.assertValidCoordinates( x, y );
+
+                var imageData = this.ctx.getImageData( x, y, 1, 1 );
+                var adjustedState = state == null || state == ON ? ON : OFF;
+                var adjustedColor = color != null ? color : COLOR_1;
+                var adjustedBrightness = brightness != null ? Math.max( 0, Math.min( brightness, 0xFF ) ) : 0xFF
+
+                if( adjustedState == ON )
+                {
+                    imageData.data[0] = (adjustedColor >> 16) & 0xFF;
+                    imageData.data[1] = (adjustedColor >> 8) & 0xFF;
+                    imageData.data[2] = adjustedColor & 0xFF;
+                    imageData.data[3] = adjustedBrightness;
+                }
+                else
+                {
+                    imageData.data[0] = 0;
+                    imageData.data[1] = 0;
+                    imageData.data[2] = 0;
+                    imageData.data[3] = 0;
+                }
+
+                this.ctx.putImageData( imageData, x, y );
+
+                // cache the pixel
+                if( this.buffered )
+                    MatrixPixelmapDisplay.prototype.setPixel.call( this, x, y, adjustedState, adjustedColor, adjustedBrightness );
+            ]]>
+        </method>
+    </class>
+
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- MatrixDisplayPixel - pixel representation in MatrixDisplay -->
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <private>
+        <class id="MatrixDisplayPixel">
+            <field id="state" value="OFF" />
+            <field id="color" value="COLOR_1"/>
+            <field id="brightness" value="0xFF" />
+
+            <constructor params="state, color, brightness">
+                <![CDATA[
+                    this.set( state, color, brightness );
+                ]]>
+            </constructor>
+
+            <!-- getters/setters -->
+            <getter id="r">
+                <![CDATA[
+                    return this.color >> 16 & 0xFF;
+                ]]>
+            </getter>
+            <getter id="g">
+                <![CDATA[
+                    return this.color >> 8 & 0xFF;
+                ]]>
+            </getter>
+            <getter id="b">
+                <![CDATA[
+                    return this.color & 0xFF;
+                ]]>
+            </getter>
+
+            <method id="set" params="state, color, brightness">
+                <![CDATA[
+                    if( state != null )
+                        this.state = state == ON ? ON : OFF;
+                        
+                    if( color != null )
+                        this.color = Math.max( 0, Math.min( color, 0xFFFFFF ) );
+                        
+                    if( brightness != null )
+                        this.brightness = Math.max( 0, Math.min( brightness, 0xFF ) );
+                ]]>
+            </method>
+            <method id="toggle">
+                <![CDATA[
+                    this.state = this.state == ON ? OFF : ON;
+                ]]>
+            </method>
+            <method id="info">
+                <![CDATA[
+                    return "MatrixDisplayPixel[state=" + this.state + ",color=#" + this.color.toString(16) + ",brightness=" + this.brightness + "]";
+                ]]>
+            </method>
+        </class>
+    </private>
+
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- MatrixPixelFilter - pixel filter for MatrixDisplay -->
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <class id="MatrixPixelFilter">
+        <constructor>
+            <![CDATA[
+            ]]>
+        </constructor>
+        <method id="filter" params="p">
+            <![CDATA[
+                return true;
+            ]]>
+        </method>
+    </class>
+
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- BitmapThresholdPixelFilter - pixel bitmap threshold filter -->
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <class id="BitmapThresholdPixelFilter" like="MatrixPixelFilter">
+        <field id="threshold" />
+        <field id="r" />
+        <field id="g" />
+        <field id="b" />
+        <field id="a" />
+        <constructor params="threshold, r, g, b, a">
+            <![CDATA[
+                MatrixPixelFilter.call( this );
+
+                this.threshold = threshold != null ? threshold : 0x7F;
+                this.r = r != null ? r : 0.2126;
+                this.g = g != null ? g : 0.7152;
+                this.b = b != null ? b : 0.0722;
+                this.a = a != null ? a : 0x7F;
+            ]]>
+        </constructor>
+        <method id="filter" params="p">
+            <![CDATA[
+                //if( ((p.brightness >= this.a) && (p.r * this.r + p.g * this.g + p.b * this.b < this.threshold)) == false )
+                //    p.state = OFF;
+                if( (p.brightness >= this.a) == false )
+                    p.state = OFF;
+            ]]>
+        </method>
+    </class>
+</module>

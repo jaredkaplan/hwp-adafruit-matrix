@@ -1,0 +1,228 @@
+<!--
+  Copyright 2011-2014 Marvell Semiconductor, Inc.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<module xmlns="http://www.kinoma.com/kpr/1">
+
+    <require id="HardwarepinsSimulator" path="kdt/simulator/HardwarepinsSimulator" />
+    <require id="PartSimulators" path="kdt/simulator/PartSimulators" />
+    <require id="AdafruitMatrix" path="AdafruitMatrix" />
+
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- Function called by the HardwarepinsSimulatorDeviceBehavior  -->
+    <!-- when a simulator interface is registered. The data returned -->
+    <!-- is used to create a new parts simulator part in the device  -->
+    <!-- simulator UI.                                               -->
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-->
+
+    <function id="createHardwarepinsSimulatorPartData" params="config, id">
+        <![CDATA[
+            var data = null;
+            
+            if( id == AdafruitMatrix.ADAFRUIT_MONO_COLOR_MATRIX_SIMULATOR_ID )
+                data = createAdafruitMonoColorMatrixSimulatorPartData( config );
+                
+            else if( id == AdafruitMatrix.ADAFRUIT_BI_COLOR_MATRIX_SIMULATOR_ID )
+                data = createAdafruitBiColorMatrixSimulatorPartData( config );
+                
+            return data;
+        ]]>
+    </function>
+    
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- Simulator implementation for AdafruitMatrix hardwarepins modules -->
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <function id="createAdafruitMonoColorMatrixSimulatorPartData" params="config">
+        <![CDATA[
+            var data = {
+                id: AdafruitMatrix.ADAFRUIT_MONO_COLOR_MATRIX_SIMULATOR_ID,
+                behavior: AdafruitMonoColorMatrixSimulatorPartBehavior,
+                header : { 
+                    label : (config != null && "label" in config) ? config.label : "Adafruit Matrix", name : "Monochrome 8x8 Matrix", iconVariant : PartSimulators.SENSOR_LED 
+                }
+            };
+            
+            return data;
+        ]]>
+    </function>
+    <function id="createAdafruitBiColorMatrixSimulatorPartData" params="config">
+        <![CDATA[
+            var data = {
+                id: AdafruitMatrix.ADAFRUIT_BI_COLOR_MATRIX_SIMULATOR_ID,
+                behavior: AdafruitBiColorMatrixSimulatorPartBehavior,
+                header : { 
+                    label : (config != null && "label" in config) ? config.label : "Adafruit Matrix", name : "8x8 Bi-Color LED Matrix", iconVariant : PartSimulators.SENSOR_LED 
+                }
+            };
+            
+            return data;
+        ]]>
+    </function>
+
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- AdafruitMatrixSimulatorPartBehavior class - behavior for the adafruit         -->
+    <!-- matrix simulator part container created by the hardwarepins device simulator. -->
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <texture id="MatrixBackgroundTexture" small="matrix-background.png" />
+    <skin id="LEDBackgroundSkin" color="#9F9F9F"/>
+
+    <function id="getColorHexString" params="color">
+        <![CDATA[
+            var r = ((color >> 16) & 0xFF).toString( 16 );
+            var g = ((color >> 8) & 0xFF).toString( 16 );
+            var b = (color & 0xFF).toString( 16 );
+            
+            return (r.length == 1 ? "0" + r : r) + (g.length == 1 ? "0" + g : g) + (b.length == 1 ? "0" + b : b);
+        ]]>
+    </function>
+
+    <container id="MatrixRendererContainer">
+        <skin texture="MatrixBackgroundTexture" x="0" y="0" width="189" height="189"/>
+        <container name="ledContainer" top="3" left="22">
+            <skin color="#4F4F4F" />
+        </container>
+    </container>
+
+    <container id="MatrixRendererLed" width="18" height="18">
+        <content name="led" top="1" left="1" bottom="1" right="1" skin="LEDBackgroundSkin"/>
+        <behavior>
+            <method id="setLED" params="content, led">
+                <![CDATA[
+                    content.led.skin = led.state == AdafruitMatrix.ON ? led.skin : LEDBackgroundSkin;
+                ]]>
+            </method>
+        </behavior>
+    </container>
+
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- Base implementation for AdafruitMatrix part behavior -->
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    
+    <behavior id="AdafruitMatrixSimulatorPartBehavior" like="PartSimulators.BasePartBehavior">
+        <field id="renderer" />
+        <field id="ledSkinMap" />
+        <method id="onCreate" params="column, data"> 
+            <![CDATA[
+                PartSimulators.BasePartBehavior.prototype.onCreate.call( this, column, data );
+                
+                // add a small separatpr
+                column.add( new Content( {height:5} ) );
+                
+                // create the renderer container
+                var rendererContainer = new MatrixRendererContainer();
+                
+                column.add( rendererContainer );
+                
+                // create the led skin map
+                this.ledSkinMap = new Object();
+                
+                //
+                // create the matrix display content
+                //
+                this.renderer = new Column();
+                
+                for( var j = 0; j < 8; j++ )
+                {
+                    var row = new Line();
+                    
+                    for( var i = 0; i < 8; i++ )
+                        row.add( new MatrixRendererLed() );
+                        
+                    this.renderer.add( row );
+                }
+                
+                // add the renderer to the container
+                rendererContainer.ledContainer.add( this.renderer );
+            ]]>
+        </method>
+        <method id="draw" params="content, message">
+            <![CDATA[
+                var parameters = message.requestText != null ? JSON.parse( message.requestText ) : new Object();
+
+                for( var row = 0; row < 8; row++ )
+                {
+                    var rowData = parameters.value[row]
+                
+                    for( var col = 0; col < 8; col++ )
+                        this.renderer[row][col].delegate( "setLED", this.createLedState( rowData, col ) );
+                }
+            ]]>
+        </method>
+        <method id="createLedState" params="rowData, col">
+            <![CDATA[
+                return { state: 0 };
+            ]]>
+        </method>
+        <method id="getLedSkin" params="color">
+            <![CDATA[
+                var key = "C" + color.toString();
+                var skin = null;
+                
+                if( key in this.ledSkinMap )
+                    skin = this.ledSkinMap[key];
+                else
+                    this.ledSkinMap[key] = skin = new Skin( "#" + getColorHexString( color ), null, null );
+                    
+                return skin;
+            ]]>
+        </method>
+    </behavior>
+    
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- Implementation for monchrome AdafruitMatrix part behavior -->
+    <!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <behavior id="AdafruitMonoColorMatrixSimulatorPartBehavior" like="AdafruitMatrixSimulatorPartBehavior">
+        <field id="skin" />
+        <method id="onCreate" params="column, data"> 
+            <![CDATA[
+                AdafruitMatrixSimulatorPartBehavior.prototype.onCreate.call( this, column, data );
+                
+                this.skin = this.getLedSkin( AdafruitMatrix.COLOR_1 );
+            ]]>
+        </method>
+        <method id="createLedState" params="rowData, col">
+            <![CDATA[
+                var state = (rowData & (1 << ((col + 7) % 8))) != 0 ? AdafruitMatrix.ON : AdafruitMatrix.OFF;
+            
+                return { state:state, skin:this.skin };
+            ]]>
+        </method>
+    </behavior>
+    
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+    <!-- Implementation for bi-color AdafruitMatrix part behavior -->
+    <!-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+
+    <behavior id="AdafruitBiColorMatrixSimulatorPartBehavior" like="AdafruitMatrixSimulatorPartBehavior">
+        <method id="createLedState" params="rowData, col">
+            <![CDATA[
+                var s1 = (rowData & (1 << col)) != 0;
+                var s2 = (rowData & (1 << (col + 8))) != 0;
+                var state = s1 || s2 ? AdafruitMatrix.ON : AdafruitMatrix.OFF;
+                var skin;
+                
+                if( s1 && s2 )
+                    skin = this.getLedSkin( AdafruitMatrix.COLOR_3 );
+                else
+                    skin = this.getLedSkin( s1 ? AdafruitMatrix.COLOR_1 : AdafruitMatrix.COLOR_2 );
+                        
+                return {state:state,skin:skin};
+            ]]>
+        </method>
+    </behavior>
+    
+</module>
